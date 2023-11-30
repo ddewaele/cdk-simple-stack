@@ -1,0 +1,251 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  cdk-simple-stack
+
+  Sample SAM Template for cdk-simple-stack
+  
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+Globals:
+  Function:
+    Timeout: 3
+
+Parameters:
+  ApiDomainName:
+    Type: String
+    Description: The name of the API Domain
+    Default: api.mydomain.com
+
+  CertificateArn:    
+    Type: String
+    Description: ACM Certificate used for the CloudFront distribution
+    Default: arn:aws:acm:eu-central-1:xxx:certificate/zzz
+
+  EdgeCertificateArn:    
+    Type: String
+    Description: ACM Certificate used for API GW custom domain.
+    Default: arn:aws:acm:us-east-1:xxx:certificate/zzz
+
+  CloudFrontAlias:    
+    Type: String
+    Description: ACM Certificate used for API GW custom domain.
+    Default: app.mydomain.com
+
+  Route53HostedZoneId:
+    Type: String
+    Description: The hosted zone ID for your Route53 / ACM certificate
+    Default : yyy
+
+  CloudFrontHostedZoneId:
+    Type: String
+    Description: The AWS managed hosted zone ID for cloudfront
+    Default: Z2FDTNDATAQYW2
+
+
+Resources:
+
+  SampleTable:
+    Type: AWS::Serverless::SimpleTable
+    Properties:
+      PrimaryKey:
+        Name: id
+        Type: String
+      ProvisionedThroughput:
+        ReadCapacityUnits: 2
+        WriteCapacityUnits: 2
+
+  ApiGatewayApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: prod
+      Auth:
+        DefaultAuthorizer: MyCognitoAuthorizer
+        Authorizers:
+          MyCognitoAuthorizer:
+            UserPoolArn: !GetAtt CognitoUserPool.Arn
+      Domain:
+        DomainName: !Ref ApiDomainName
+        CertificateArn: !Ref CertificateArn
+        Route53:
+          HostedZoneId: !Ref Route53HostedZoneId
+        BasePath:
+          - default
+
+  HelloWorldFunction:
+    Type: AWS::Serverless::Function 
+    Properties:
+      CodeUri: hello-world/
+      Handler: app.lambdaHandler
+      Runtime: nodejs20.x
+      Architectures:
+        - x86_64
+      Events:
+        HelloWorld:
+          Type: Api
+          Properties:
+            Path: /api
+            Method: get
+            RestApiId:
+              Ref: ApiGatewayApi            
+    Metadata:
+      BuildMethod: esbuild
+      BuildProperties:
+        Minify: true
+        Target: "es2020"
+        Sourcemap: true
+        EntryPoints: 
+        - app.ts
+
+# S3 Bucket to host single page app website
+  WebSiteBucket:
+    Type: "AWS::S3::Bucket"
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - BucketKeyEnabled: true
+
+  WebSiteBucketPolicy:
+    Type: "AWS::S3::BucketPolicy"
+    Properties:
+      Bucket: !Ref WebSiteBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Id: "PolicyForCloudFrontPrivateContent"
+        Statement:
+        - Sid: "AllowCloudFrontServicePrincipal"
+          Effect: "Allow"
+          Principal:
+            Service: "cloudfront.amazonaws.com"
+          Action: "s3:GetObject"
+          Resource: !Join [ "", [ "arn:aws:s3:::", !Ref WebSiteBucket, "/*" ] ]
+          Condition:
+            StringEquals:
+              "AWS:SourceArn": !Join [ "", [ "arn:aws:cloudfront::", !Ref "AWS::AccountId", ":distribution/", !Ref CloudFrontDistribution ] ]
+  
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      
+      DistributionConfig:
+        Aliases:
+          - !Ref CloudFrontAlias
+        PriceClass: "PriceClass_100"
+        Origins:
+          - DomainName: !GetAtt WebSiteBucket.RegionalDomainName
+            Id: SpaOrigin
+            OriginAccessControlId: !GetAtt CloudFrontOriginAccessControl.Id
+            S3OriginConfig: 
+              OriginAccessIdentity: ""              
+          - DomainName: !Ref ApiDomainName
+            Id: ApiOrigin
+            CustomOriginConfig:
+              HTTPPort: 80
+              HTTPSPort: 443
+              OriginProtocolPolicy: https-only
+              OriginSSLProtocols:
+              - "TLSv1.2"
+            OriginPath: /default
+        Enabled: true
+        DefaultRootObject: index.html
+        DefaultCacheBehavior:
+          TargetOriginId: SpaOrigin
+          ForwardedValues:
+            QueryString: 'false'
+            Cookies:
+              Forward: none
+          ViewerProtocolPolicy: redirect-to-https
+          SmoothStreaming: false
+          Compress: true
+        CacheBehaviors:
+          - PathPattern: /api/*
+            TargetOriginId: ApiOrigin
+            # CachePolicyId: "2e54312d-136d-493c-8eb9-b001f22f67d2"
+            CachePolicyId: !Ref ApiCachePolicy
+            ViewerProtocolPolicy: redirect-to-https
+        ViewerCertificate:
+          AcmCertificateArn: !Ref EdgeCertificateArn
+          SslSupportMethod: sni-only
+          MinimumProtocolVersion: TLSv1.2_2018
+
+
+  ApiCachePolicy:
+    Type: AWS::CloudFront::CachePolicy
+    Properties: 
+      CachePolicyConfig:
+        Name: ApiCachePolicy
+        DefaultTTL: 0
+        MaxTTL: 300
+        MinTTL: 0
+        ParametersInCacheKeyAndForwardedToOrigin:
+          HeadersConfig:
+            HeaderBehavior: whitelist
+            Headers:
+              - Authorization
+          CookiesConfig:
+            CookieBehavior: none
+          QueryStringsConfig:
+            QueryStringBehavior: none
+          EnableAcceptEncodingGzip: true
+          EnableAcceptEncodingBrotli: true
+
+  CloudFrontOriginAccessControl:
+    Type: "AWS::CloudFront::OriginAccessControl"
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "${WebSiteBucket} OAC"
+        OriginAccessControlOriginType: "s3"
+        SigningBehavior: "always"
+        SigningProtocol: "sigv4"
+
+
+  myDNS:
+    Type: 'AWS::Route53::RecordSetGroup'
+    Properties:
+      HostedZoneId: !Ref Route53HostedZoneId
+      RecordSets:
+        - Name: !Ref CloudFrontAlias
+          Type: A
+          AliasTarget:
+            HostedZoneId: !Ref CloudFrontHostedZoneId
+            DNSName: !GetAtt 
+              - CloudFrontDistribution
+              - DomainName
+
+  CognitoUserPool:
+      Type: AWS::Cognito::UserPool
+      Properties:
+        Policies:
+          PasswordPolicy:
+            MinimumLength: 8
+        UsernameAttributes:
+          - email
+        Schema:
+          - AttributeDataType: String
+            Name: email
+            Required: false
+  
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      GenerateSecret: false
+
+
+
+Outputs:
+  HelloWorldApi:
+    Description: "API Gateway endpoint URL for Prod stage for Hello World function"
+    Value: !Sub "https://${ApiGatewayApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/hello/"
+  HelloWorldFunction:
+    Description: "Hello World Lambda Function ARN"
+    Value: !GetAtt HelloWorldFunction.Arn
+  HelloWorldFunctionIamRole:
+    Description: "Implicit IAM Role created for Hello World function"
+    Value: !GetAtt HelloWorldFunctionRole.Arn
+  WebsiteBucketName:
+    Description: "The bucket name for our website"
+    Value: !Ref WebSiteBucket
+  CloudFrontAlias:
+    Description: "The CloudFront alias"
+    Value: !Ref CloudFrontAlias
+
