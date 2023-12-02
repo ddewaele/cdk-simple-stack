@@ -1,4 +1,4 @@
-# cdk-simple-stack
+# sam-simple-stack
 
 To build and deploy your application for the first time, run the following in your shell:
 
@@ -17,7 +17,7 @@ sam delete --no-prompts
 To deploy the UI (manual for now)
 
 ```bash
-BUCKET_NAME=cdk-simple-stack-websitebucket-11lh4idw5f1y7
+BUCKET_NAME=sam-simple-stack-websitebucket-11lh4idw5f1y7
 aws s3 cp --recursive . s3://$BUCKET_NAME
 ```
 
@@ -42,19 +42,19 @@ curl -v https://api2.my-tst-playground.com/default/hello
 Build your application with the `sam build` command.
 
 ```bash
-cdk-simple-stack$ sam build
+sam-simple-stack$ sam build
 ```
 Run functions locally and invoke them with the `sam local invoke` command.
 
 ```bash
-cdk-simple-stack$ sam local invoke HelloWorldFunction --event events/event.json
+sam-simple-stack$ sam local invoke HelloWorldFunction --event events/event.json
 ```
 
 The SAM CLI can also emulate your application's API. Use the `sam local start-api` to run the API locally on port 3000.
 
 ```bash
-cdk-simple-stack$ sam local start-api
-cdk-simple-stack$ curl http://localhost:3000/
+sam-simple-stack$ sam local start-api
+sam-simple-stack$ curl http://localhost:3000/
 ```
 
 
@@ -63,7 +63,7 @@ cdk-simple-stack$ curl http://localhost:3000/
 Tests are defined in the `hello-world/tests` folder in this project. Use NPM to install the [Jest test framework](https://jestjs.io/) and run unit tests.
 
 ```bash
-cdk-simple-stack$ cd hello-world
+sam-simple-stack$ cd hello-world
 hello-world$ npm install
 hello-world$ npm run test
 ```
@@ -73,7 +73,7 @@ hello-world$ npm run test
 To delete the sample application that you created, use the AWS CLI. Assuming you used your project name for the stack name, you can run the following:
 
 ```bash
-sam delete --stack-name cdk-simple-stack
+sam delete --stack-name sam-simple-stack
 ```
 
 ## Resources

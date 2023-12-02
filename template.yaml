@@ -1,9 +1,9 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
 Description: >
-  cdk-simple-stack
+  sam-simple-stack
 
-  Sample SAM Template for cdk-simple-stack
+  Sample SAM Template for sam-simple-stack
   
 # More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
 Globals:
@@ -159,7 +159,7 @@ Resources:
         CacheBehaviors:
           - PathPattern: /api/*
             TargetOriginId: ApiOrigin
-            # CachePolicyId: "2e54312d-136d-493c-8eb9-b001f22f67d2"
+            # CachePolicyId: "2e54312d-136d-493c-8eb9-b001f22f67d2"    # why doesn't this managed cache policy work. Why do we need a ref to ApiCachePolicy
             CachePolicyId: !Ref ApiCachePolicy
             ViewerProtocolPolicy: redirect-to-https
         ViewerCertificate:
